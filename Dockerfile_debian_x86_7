@@ -48,8 +48,11 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
     && apt-get -qq clean
 
 
+# install vim 7.4
+# RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update && apt-get -t wheezy-backports install -qq -y --no-install-recommends vim
+
 # Download & unpack Qt 5.0 toolchains & clean
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update && apt-get install -qq -y --no-install-recommends libqt4-dev qt4-dev-tools gdb vim
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update && apt-get install -qq -y --no-install-recommends libqt4-dev qt4-dev-tools gdb 
 
 # env variable for jenkins
 ENV linux_gcc_x86_qt_dir /usr
@@ -70,7 +73,31 @@ RUN git clone https://github.com/xaiser/code_environment
 RUN cp /home/jenkins/git/code_environment/.tmux.conf /home/jenkins
 RUN cp /home/jenkins/git/code_environment/bashrc_v2 /home/jenkins/.bashrc
 RUN cp /home/jenkins/git/code_environment/gitconfig_setting /home/jenkins/.gitconfig
+
+# build vim
+USER root
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+	apt-get -qq dist-upgrade && apt-get install -qq -y --no-install-recommends \
+    exuberant-ctags \
+    python-dev \
+	libperl-dev \
+	libncurses5-dev \
+	ruby-dev \
+    && apt-get -qq clean
+
+USER jenkins
+RUN git clone https://github.com/vim/vim.git
+WORKDIR /home/jenkins/git/vim
+RUN ./configure --with-features=huge --enable-multibyte --enable-pythoninterp --enable-perlinterp --enable-rubyinterp --enable-cscope
+RUN make
+
+USER root
+WORKDIR /home/jenkins/git/vim
+RUN cd src && make install
+USER jenkins
 WORKDIR /
+
+
 
 USER root
 RUN adduser jenkins sudo
