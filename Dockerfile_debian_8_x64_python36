@@ -1,0 +1,127 @@
+FROM amd64/debian:8
+
+USER root
+
+# install some basic library
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	ca-certificates \
+	curl \
+	wget \
+	cmake \
+	openssh-server &&\
+ 	rm -rf /var/lib/apt/lists/* &&\
+	sed -i 's|session    required     pam_loginuid.so|session    optional     pam_loginuid.so|g' /etc/pam.d/sshd &&\
+mkdir -p /var/run/sshd
+
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+# Install JDK 7 (latest edition)
+RUN echo 'deb http://deb.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/jessie-backports.list
+RUN apt-get -q update &&\
+    DEBIAN_FRONTEND="noninteractive" apt-get -q install -y -o Dpkg::Options::="--force-confnew" --no-install-recommends openjdk-7-jre-headless &&\
+apt-get -q clean -y && rm -rf /var/lib/apt/lists/* && rm -f /var/cache/apt/*.bin
+
+RUN echo 'deb http://ftp.de.debian.org/debian testing main' >> /etc/apt/sources.list
+
+
+# Install updates & requirements:
+#  * git, openssh-client, ca-certificates - clone & build
+#  * curl, p7zip - to download & unpack Qt bundle
+#  * build-essential, pkg-config, libgl1-mesa-dev - basic Qt build requirements
+#  * libsm6, libice6, libxext6, libxrender1, libfontconfig1 - dependencies of Qt bundle run-file
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+	apt-get -qq dist-upgrade && apt-get -t testing install -qq -y --no-install-recommends \
+    git \
+    openssh-client \
+    ca-certificates \
+    p7zip \
+    build-essential \
+    pkg-config \
+    libgl1-mesa-dev \
+    libsm6 \
+    libice6 \
+    libxext6 \
+    libxrender1 \
+    libfontconfig1 \
+	tmux \
+	sudo \
+	cscope \
+    && apt-get -qq clean
+
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+	apt-get -qq dist-upgrade && apt-get -t testing install -qq -y --no-install-recommends \
+	libssl-dev \
+	zlib1g-dev \
+	libbz2-dev \
+	libreadline-dev \ 
+	libsqlite3-dev \
+	llvm \
+	libncurses5-dev  \
+	libncursesw5-dev \
+	xz-utils \
+	tk-dev \
+    && apt-get -qq clean
+
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+	apt-get -qq dist-upgrade && apt-get -t testing install -qq -y --no-install-recommends \
+	python3.6 \
+	python3-pip \
+    && apt-get -qq clean
+
+RUN pip3 install ply
+
+# install vim 7.4
+# RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update && apt-get -t wheezy-backports install -qq -y --no-install-recommends vim
+
+# Download & unpack Qt 5.0 toolchains & clean
+#RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update && apt-get install -qq -y --no-install-recommends libqt4-dev qt4-dev-tools gdb 
+
+# Set user jenkins to the image
+RUN useradd -m -d /home/jenkins -s /bin/bash jenkins &&\
+    echo "jenkins:jenkins" | chpasswd
+
+USER jenkins
+
+# set up coding environment
+RUN mkdir /home/jenkins/git
+WORKDIR /home/jenkins/git
+RUN git clone https://github.com/xaiser/code_environment
+RUN cp /home/jenkins/git/code_environment/.tmux.conf /home/jenkins
+RUN cp /home/jenkins/git/code_environment/bashrc_v2 /home/jenkins/.bashrc
+RUN cp /home/jenkins/git/code_environment/gitconfig_setting /home/jenkins/.gitconfig
+
+# build vim
+USER root
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -q update &&\
+	apt-get -qq dist-upgrade && apt-get install -qq -y --no-install-recommends \
+    exuberant-ctags \
+    python-dev \
+	libperl-dev \
+	libncurses5-dev \
+	ruby-dev \
+    && apt-get -qq clean
+
+USER jenkins
+RUN git clone https://github.com/vim/vim.git
+WORKDIR /home/jenkins/git/vim
+RUN ./configure --with-features=huge --enable-multibyte --enable-pythoninterp --enable-perlinterp --enable-rubyinterp --enable-cscope
+RUN make
+
+USER root
+WORKDIR /home/jenkins/git/vim
+RUN cd src && make install
+USER jenkins
+WORKDIR /
+
+
+USER root
+RUN adduser jenkins sudo
+RUN echo "jenkins ALL=(ALL) NOPASSWD:ALL" | tee -a /etc/sudoers
+
+# Standard SSH port
+EXPOSE 22
+
+# Default command
+CMD ["/usr/sbin/sshd", "-D"]
